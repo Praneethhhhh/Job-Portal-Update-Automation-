@@ -24,8 +24,8 @@ export async function runScheduledTick({ root, directory, createAdapter, now = D
     return await runCycle({ directory, adapter, now, sessionStartedAt: sessionStartedAt <= now ? sessionStartedAt : undefined, minimumIntervalMinutes: config.minimumIntervalMinutes, closeAdapter: true,
       scheduledIntervalMs: randomInt(35 * 60, 45 * 60 + 1) * 1000,
       lockReservation: () => acquireLock(control),
-      authorize: async () => {
-        if (!(await canRun())) return false;
+      authorize: async ({ reservation } = {}) => {
+        if (reservation && !(await canRun())) return false;
         const latest = await readJson(configFile);
         return latest.enabled === true && configurationId(latest) === ready.configurationId &&
           (latest.headless === true) === (config.headless === true) &&

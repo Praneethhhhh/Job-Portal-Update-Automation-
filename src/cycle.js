@@ -110,24 +110,30 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
       if (!cycle && testSession.lastAttemptAt && now < next && !(sessionStartedAt > Date.parse(testSession.lastAttemptAt))) return { outcome: 'skipped', reason: 'minimum-interval-after-test', nextEligibleAt: new Date(next).toISOString() };
     }
     // Validate storage before reserving or accessing the browser.
-    await readHistory(directory);
+    const history = await readHistory(directory);
     if (recoverOnly && !cycle) return { outcome: 'nothing-to-recover' };
     const state = await readJson(stateFile, {});
     const previous = await readJson(budgetFile, null);
     if (previous) {
       validateBudget(previous);
+      let budgetChanged = false;
       const interrupted = previous.attempts.at(-1);
       if (interrupted.outcome === 'running') {
         interrupted.outcome = 'failed';
         interrupted.reason = 'process-interrupted';
+        budgetChanged = true;
       }
       // A crash/legacy record has an unknown failure time: start the delay when
       // detected, and persist it so restarts cannot shorten or reset the delay.
-      for (const prior of previous.attempts.filter(a => a.outcome === 'failed' && !a.failedAt)) prior.failedAt = timestamp();
-      await writeJson(budgetFile, previous);
+      for (const prior of previous.attempts.filter(a => a.outcome === 'failed' && !a.failedAt)) {
+        prior.failedAt = timestamp();
+        budgetChanged = true;
+      }
+      if (budgetChanged) await writeJson(budgetFile, previous);
       // Idempotently repair a missing failure event after a process/storage
       // interruption, including a crash between budget and history writes.
       for (const prior of previous.attempts.filter(a => a.outcome === 'failed')) {
+        if (history.some(row => row.eventId === `${prior.id}:failed`)) continue;
         await recordHistory(directory, {
           eventId: `${prior.id}:failed`, cycleId: previous.cycleId, attemptId: prior.id,
           at: prior.failedAt, action: prior.action,
@@ -144,7 +150,7 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
     if (reserved.skipped) return { outcome: 'skipped', reason: reserved.budgetState, nextEligibleAt: reserved.nextEligibleAt };
     if (lockReservation) {
       releaseReservation = await lockReservation();
-      if (!(await authorize())) return { outcome: 'skipped', reason: 'workflow-off' };
+      if (!(await authorize({ reservation: true }))) return { outcome: 'skipped', reason: 'workflow-off' };
     }
     ({ budget, attempt } = reserved);
     if (minuteTest) {

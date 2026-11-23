@@ -1,20 +1,37 @@
 # System architecture
 
-## Current implementation (Phases 1–2)
+## What runs on Windows
+
+| Component | Responsibility |
+| --- | --- |
+| `NaukriProfileScheduler` | Windows Task Scheduler starts the Node worker at sign-in, unlock or wake. A five-minute backup trigger starts it if it has stopped. Windows ignores overlapping worker starts. |
+| `NaukriProfileScheduler-Session` | At sign-in or wake, this task runs a short Node script that records the event in `.local/windows-session.json` when the workflow is On. The script does not open Chrome. |
+| `wscript.exe` and `scripts/run-scheduler-hidden.vbs` | Launch Node without flashing a command window. The Chrome mode is a separate application setting. |
+| Windows account and NTFS permissions | The tasks run in your signed-in Windows session with limited privileges. The protected checkout restricts access to code, settings, and browser data. Chrome retains its scoped sandbox permissions. |
+| Node.js and npm | Node runs the worker, dashboard, and CLI. npm installs Playwright and provides the project commands. |
+| Installed Chrome or Edge | Playwright uses a dedicated browser profile under `.local/browser/`. Your normal browser profile is separate. |
+
+The tasks leave the laptop asleep. After Windows sign-in or wake, the worker checks the saved signal and can start a fresh cycle when On. After a scheduled cycle starts, the app saves a randomly selected delay from 35 to 45 minutes at whole-second precision. The five-minute Windows timer only helps restart the worker. It does not set the profile-update interval.
 
 ```mermaid
 flowchart LR
-  U[Local CLI] --> C[Cycle coordinator]
-  C --> L[Exclusive lock and hourly budget]
-  C --> B[Lazy browser adapter]
-  B --> P[Dedicated Chrome or Edge session]
-  P --> N[Verified Basic details dialog]
+  W[Windows sign-in or wake] --> T[Task Scheduler]
+  T --> M[Session timestamp]
+  T --> R[Node scheduler worker]
+  M --> R
+  D[Local dashboard] --> F[Saved On or Off setting]
+  F --> R
+  U[Manual CLI] --> C[Cycle coordinator]
+  R --> C
+  C --> L[Locks and saved attempt budget]
+  C --> B[Playwright and dedicated browser session]
+  B --> N[Naukri Basic details]
   C --> J[Private recovery journal]
-  C --> H[Redacted outcome history]
-  U --> S[Status and dashboard metrics]
+  C --> H[Redacted update history]
+  H --> D
 ```
 
-`src/cli.js` provides login, inspect, dry-run, save, recover and status. It checks activation, runs one attempt and optionally waits for one eligible retry. `src/cycle.js` owns journal phases, attempt reservation, recovery and finalization. `src/budget.js` enforces rolling 60-minute windows with at most two attempts. `src/browser.js` verifies the dialog, mutates only Name and checks fresh confirmation/persisted values. `src/history.js` provides flushed append-only events, ID deduplication and IST metrics. `src/errors.js` uses fixed non-sensitive reasons and explicit retryability.
+`src/cli.js` provides login, inspection, dry-run, save, recovery and status. `src/scheduler.js` checks the switch, browser validation, session timestamp and saved eligibility. `src/cycle.js` manages attempt reservations, the recovery journal and final verification. `src/budget.js` tracks timing and at most one eligible retry per window. `src/browser.js` checks the origin and editor identity, updates the Name field, waits after each save and verifies the saved value. `src/history.js` stores redacted events and calculates IST metrics. The dashboard uses a local HTTP server on `127.0.0.1:4317` and can be closed independently of the worker.
 
 ## Sequence
 

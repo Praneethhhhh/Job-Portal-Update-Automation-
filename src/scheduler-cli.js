@@ -13,10 +13,12 @@ try {
   if (process.argv.slice(2).some(flag => flag !== '--managed')) throw new Error();
   release = await acquireRunnerLock(directory);
   const managed = process.argv.includes('--managed');
+  let available = true;
+  let nextTaskCheck = 0;
   while (!stopping) {
-    let available = true;
-    if (managed) {
+    if (managed && Date.now() >= nextTaskCheck) {
       const scheduler = await windowsTaskStatus(root);
+      nextTaskCheck = Date.now() + 60000;
       // Disabling/removing a task lets an in-progress reserved cycle finish,
       // then the worker exits rather than performing another attempt.
       if (['paused', 'not-installed'].includes(scheduler.state)) break;

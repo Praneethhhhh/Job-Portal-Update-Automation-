@@ -1,93 +1,102 @@
 # Naukri Profile Scheduler
 
-Free local Windows automation with no AI runtime, cloud service or database. One cycle opens **Basic details**, appends one full stop to Name, saves, reopens and restores the exact original Name, then saves and verifies restoration. The Resume headline dialog is never a target.
+A local Windows app that runs a verified update on your own Naukri profile and tracks the result in a dashboard. Each cycle opens **Basic details**, adds a period to the **Name** field, saves, then restores and verifies the exact original name. The two saves count as one completed update.
 
-## Current status
+Setup is required on each computer. The repository supplies the application and installer. You supply your own browser login, page selectors, and validation results.
 
-Phases 1–2, Phase 3 validation tooling and Phase 4 dashboard/scheduler code are implemented with control and local browser tests. Live Naukri validation and the Windows schedule pilot remain pending. No Windows task is installed by starting the dashboard. Source is stored in local Git; GitHub publishing is deferred.
+## How it works
 
-The app defaults Off. A background browser and repeated saves are not a guarantee of Naukri permission, lack of detection or improved visibility.
+| Component | Job |
+| --- | --- |
+| **Windows Task Scheduler** | Starts the Node.js worker in your signed-in Windows session. A companion task records sign-in and wake events. A five-minute backup trigger starts the worker if needed. |
+| **Node.js worker** | Checks the On/Off setting, validation, and saved attempt limits before opening a browser. It records results and prioritizes restoring the original name if a cycle is interrupted. |
+| **Playwright + Chrome or Edge** | Uses a dedicated browser session to open the profile editor, perform the two saves, and verify the restored value. |
+| **Local dashboard** | Shows worker status, update totals, failures, and pending recovery. The worker can run after you close the dashboard. |
 
-## Install on Windows
+Windows launches the worker, and Node.js decides when a profile update is eligible. Your browser session, settings, and run history stay in the project on your computer.
 
-Requires Node.js 22+ and installed Google Chrome or Microsoft Edge. On another computer, install dependencies and log in separately. Never transfer session data via GitHub.
+## 1. Install on Windows
+
+You need **Windows**, **PowerShell**, **Node.js 22 or newer** with npm, and **Google Chrome or Microsoft Edge**. Download the repository ZIP from GitHub and extract it to a folder you own, or clone it with Git. Open PowerShell in the project folder, where `package.json` is located.
 
 ```powershell
 npm ci
-Copy-Item config.example.json config.local.json
+if (-not (Test-Path config.local.json)) {
+    Copy-Item config.example.json config.local.json
+}
+```
+
+Keep the checkout at a stable path once you install the Windows tasks. Their actions point to this folder.
+
+## 2. Connect your browser and configure the editor
+
+Open `config.local.json`. Set `enabled` to `false` during setup, choose `chrome` or `msedge` for `browserChannel`, and choose a browser mode. With `headless: false`, the browser window can appear during a run. With `headless: true`, it runs without a window.
+
+```powershell
 npm run login
+npm run inspect
 ```
 
-Set `browserChannel` to `chrome` or `msedge` in local config. Chrome now defaults in the example; older configs without that setting use Edge. Login opens a dedicated visible browser with Playwright Inspector. Log in manually and click Resume when finished. Your ordinary Chrome workspace remains separate. Passwords are not application configuration; sensitive session data stays under `.local/browser`.
+Sign in manually in the dedicated browser. Click **Resume** in Playwright Inspector when finished. Use the inspector to identify the selectors on your own authenticated profile. The example leaves these blank because they need to match the actual page.
 
-Clicking Resume saves/closes the inspection session; it does not discover selectors or turn the workflow On. The dashboard shows saved-session presence separately from page checks and the supervised test. For developer diagnostics, `npm run inspect -- --report` prints a redacted control inventory; add `--keep-open` to leave that read-only inspection window open until you close it. `--open-editor` accepts the unique Edit locator observed in the actual page and opens only that editor. No report command fills or submits fields.
+| Setting | What it identifies |
+| --- | --- |
+| `edit` | The Edit control in the top profile card |
+| `editor` | The dialog container for **Basic details** |
+| `name`, `close`, `save` | The Name input, close control, and Save button inside that dialog. Use a CSS selector for `name`. |
+| `heading` | Optional selector inside the dialog when **Basic details** is plain text rather than an accessible heading |
+| `success` | The fresh success message, required in the default `toast-and-editor` confirmation mode |
+| `challenge`, `validationError` | Optional page selectors for authentication challenges and validation errors |
 
-## Configure and validate (Phase 3)
+For a redacted list of controls, use `npm run inspect -- --report`. If saves do not display a repeat confirmation message, the `persisted-editor` confirmation mode verifies the value by reopening the profile. See the [setup guide](docs/SUPERVISED-VALIDATION.md) for details.
 
-Use `npm run inspect` to inspect the actual authenticated page. Configure explicit selectors for the top identity-card Edit control (`edit`), modal container (`editor`), Name input (`name`), modal close (`close`), Save (`save`), new success indicator (`success`), login/OTP/CAPTCHA indicators (`challenge`) and validation errors (`validationError`). `name` must be a CSS selector for the unique input. `name`, `close` and `save` are relative to the modal; others are page-relative. The modal must contain the accessible exact heading **Basic details**; verify this in inspection. Never infer the editor from its URL.
+## 3. Verify before scheduling
 
-Run `npm run dry-run`. It opens the verified editor without filling or submitting. Save may be disabled before an edit. No guessed production selectors are supplied.
-
-The exact **Basic details** title can be a plain text element on the live site. Set the optional modal-relative `selectors.heading` to that observed element; the adapter still checks its exact text. `confirmationMode: "persisted-editor"` supports sites that omit a repeat toast: after Save, the modal must close and a fresh navigation must show the exact requested Name. Closing alone is never success. In this mode `success` is optional. Missing `challenge`/`validationError` selectors use conservative built-in CAPTCHA/login/native-invalid detection; configure explicit site-specific selectors where available. The default `toast-and-editor` mode still requires a fresh configured success indicator and reopened persisted-value verification.
-
-Every Save waits at least **five seconds** before the editor is reopened. The sequence is: append one period, Save, wait five seconds, reopen/verify, restore the exact original, Save, wait five seconds, reopen/verify, then close. `postSaveDelayMs` defaults to `5000` and cannot be set below that. The persisted-editor adapter reuses its fresh server read once so the coordinator does not immediately reload the same page again. Pacing reduces request frequency; it does not certify that a site permits automation.
-
-For the guided Phase 3 checks, run:
+Run `npm run check-setup`, then choose **one** read-only check for the mode in your config.
 
 ```powershell
-npm run check-setup
-npm run verify
-npm run verify -- --background
+npm run verify                 # headless: false
+npm run verify -- --background # headless: true
 ```
 
-`check-setup` is offline and read-only: it reports configuration, activation, session-directory presence, recovery, lock, budget and validation evidence without displaying private values. `verify` opens a visible dedicated browser and records a read-only dry-run. `--background` checks the headless browser separately. Both work while Off and never submit or reserve a workflow attempt. Session-directory presence does not establish that login is still valid.
+The read-only check opens the editor without saving. In live testing, Naukri returned HTTP 403 for headless Chrome while the visible check passed. If your chosen mode fails, resolve it before continuing. If you switch modes, validate the mode you intend to run.
 
-After both checks pass, manually confirm site permission and set `permissionConfirmed` and `enabled` to true. Run `npm run verify-save` for **one supervised live two-save attempt** in a visible browser. This makes real profile edits and verifies exact restoration through the normal coordinator. It honors activation, recovery, lock and budget; it does not automatically retry. If it fails, inspect `npm run status` and reconcile pending recovery before proceeding. A recovery-only result cannot certify a fresh two-save validation.
-
-Results are stored privately in `.local/validation.json`, with only check names, timestamps, statuses and a configuration hash. Changing selectors, URL, browser, timeout or interval invalidates matching evidence; rerunning a dry-run invalidates the previous live-save result. `npm run check-setup` shows the current evidence. Passing these checks does not certify site permission or complete the manual background/save and recovery checks in [the Phase 3 guide](docs/SUPERVISED-VALIDATION.md).
-
-Once site permission is established and you are ready for a supervised live check, set `permissionConfirmed` and `enabled` to true, then use `npm run save`. The app will perform real profile edits when enabled and configured. Confirm the original Name is restored. Set `enabled` back to false to prevent further write attempts.
-
-## Commands and outcomes
-
-- `npm run status`: redacted cycle status, budget, completed updates, failed attempts, IST daily totals and actual Windows task state (unknown if unavailable).
-- `npm run dashboard`: local dashboard at `http://127.0.0.1:4317`, with validated On/Off control, counts, recovery and recent activity.
-- `npm run scheduler`: foreground worker for operational testing; the dashboard need not remain open. Requires the unattended validation gates before any attempt.
-- `npm run test-minute`: explicitly requested, bounded live test of two visible cycles, with one minute between completed cycles and five seconds after each Save. Requires saved setup/site permission and the normal workflow Off. Stops on the first failure and never starts automatic retries.
-- `npm run save`: one full cycle or pending restoration, within the shared budget.
-- `npm run recover`: pending restoration only, within the same budget and activation gates.
-- `npm test`: all unit and mock browser tests; needs Edge for the browser test suite. Tests route mock requests locally and do not use Naukri.
-
-Each 60-minute window allows the first attempt and one retry at least 60 seconds after a transient failure completes. Failure time is persisted; slow attempts cannot skip the delay. After two failures, **no more attempts, including recovery**, until the next window. The two saves are one attempt, not two attempts. CAPTCHA, rate limiting, validation rejection and conflicts stop automatic retries, including when they interrupt navigation or clicks. If security state cannot be inspected after a browser error, stop without retrying. Restarting or manual commands do not reset the budget. Lost confirmations are reconciled before further writes. A temporary period may remain visible until restoration can succeed.
-
-The CLI waits for one eligible retry and rechecks activation before it starts. The scheduled worker checks persisted eligibility every 15 seconds; it never queues missed hours. Turning Off cancels a waiting retry; a running attempt may finish restoring the original Name. The dashboard writes the same persisted activation flag without resetting the budget.
-
-## Local files and recovery
-
-`.local/pending-cycle.json` contains private original/temporary names and milestones. `.local/budget.json` stores attempts and next eligibility. `.local/history.jsonl` contains durable redacted outcomes. `.local/state.json` contains the last outcome. History corruption fails closed; no silent reset or automatic log rotation is provided.
-
-One completed update requires verified temporary submission and exact restoration, counted once by cycle ID. A restoration alone does not fabricate an update. Failed attempts remain counted after later success. Status and history never include Name values.
-
-A crash can leave `.local/run.lock`, `.local/runner/run.lock` or `.local/control/run.lock`. Check the recorded PID and confirm the corresponding process is not running before manually removing a stale lock; never delete a lock merely because it is old. Do not delete pending journal or budget files to bypass limits. Login/OTP/CAPTCHA requires manual attention.
-
-## Schedule and GitHub
-
-Start `npm run dashboard` to inspect status while the workflow is Off. The dashboard uses only loopback HTTP and local assets. It rejects foreign Host/Origin requests, requires a per-process CSRF token for On/Off, and displays only redacted status. Keep its terminal running while using the page. Closing the dashboard process does not stop the independent Windows worker.
-
-Before installing or turning On unattended operation, complete both recorded dry-runs, `npm run verify-save` and the remaining manual checks in the Phase 3 guide. Set `unattendedConfirmed` to the JSON boolean `true` only after those checks. Installation may happen while `enabled` remains false. The runner and dashboard reject stale/missing validation evidence and missing permission; they do not infer permission from test results.
+Once the read-only check passes and you have confirmed Naukri permits the workflow, set `permissionConfirmed` and `enabled` to `true`. Run the supervised check once.
 
 ```powershell
-.\scripts\install-task.ps1 -Preview # Show task XML without installing anything
-.\scripts\install-task.ps1          # Install and start the worker after validation
-.\scripts\install-task.ps1 -Pause
-.\scripts\install-task.ps1 -Resume
-.\scripts\install-task.ps1 -Remove
+npm run verify-save
+npm run status
 ```
 
-Before installing on Windows, run `.\scripts\protect-project.ps1` as the project owner. It limits checkout access to that account, SYSTEM, and administrators. This protects the scheduled scripts, configuration, and saved browser profile.
+This makes real profile edits in the configured browser mode. Confirm the original name is restored and that `npm run check-setup` reports `liveChecksPassed: true`. If the attempt fails or restoration is pending, resolve it before enabling the schedule. Set `enabled` back to `false` until you are ready to turn on scheduled updates.
 
-The task uses a hidden launcher in the signed-in Windows session. Sign-in and wake signal a fresh cycle when the workflow is On and any pending recovery or retry limits allow it. Subsequent scheduled cycles use a delay of 35 to 45 minutes from the start of the previous cycle, chosen in whole seconds and saved in the attempt budget. The five-minute Windows backup timer starts the worker if needed. The laptop stays asleep until you wake it.
+## 4. Install and confirm the schedule
 
-`.local/`, `config.local.json`, `.env` files and dependencies are Git-ignored. Only source, tests, example config, documentation and lockfile should be published. No commit or GitHub push will be made until the user requests it. Avoid running this against the same account from multiple computers: local budgets cannot coordinate between machines.
+From the project folder, run the permissions script and installer as the Windows user who will run the workflow. The permissions script restricts access to the checkout and its browser session.
 
-Documentation: [PRD](docs/PRD.md), [architecture](docs/ARCHITECTURE.md), [interfaces/data](docs/INTERFACES-AND-DATA.md), [Name workflow](docs/NAME-UPDATE-WORKFLOW.md), [retry policy](docs/RETRY-POLICY.md), [dashboard/scheduling](docs/DASHBOARD-AND-SCHEDULING.md), [implementation checkpoints](docs/IMPLEMENTATION-PHASES.md).
+```powershell
+.\scripts\protect-project.ps1
+.\scripts\install-task.ps1
+Get-ScheduledTask -TaskName 'NaukriProfileScheduler*'
+npm run dashboard
+```
+
+Expect two Windows tasks, **NaukriProfileScheduler** and **NaukriProfileScheduler-Session**. Open the dashboard at [http://127.0.0.1:4317](http://127.0.0.1:4317), check that the worker is active, and turn the workflow **On**. Use the next eligible time and recent activity to check the first scheduled result. The worker runs in your signed-in Windows session while the computer is awake.
+
+The five-minute backup trigger checks whether the worker needs to start. It is separate from the profile update schedule. During normal scheduled operation, the worker selects the next 35–45 minute interval and stores it locally. Sign-in or wake can signal a fresh cycle when the saved state allows it. The worker checks pending restoration and retry limits first.
+
+## Daily use and troubleshooting
+
+| If you want to… | Do this |
+| --- | --- |
+| Stop future updates | Turn **Off** in the dashboard. A cycle already in progress may finish restoring the name. |
+| Check a failure or pending restoration | Run `npm run status`. When eligible, `npm run recover` attempts restoration only. |
+| Refresh an expired login | Run `npm run login` and complete any verification prompt yourself. |
+| Change the browser, mode, or selectors | Run the matching read-only check and supervised validation again. |
+| Pause or remove the Windows tasks | Use `.\scripts\install-task.ps1 -Pause` to pause the worker, `-Resume` to resume, or `-Remove` to uninstall the tasks. |
+
+A transient failure can receive one retry after at least 60 seconds. Security challenges, access restrictions, and conflicting profile changes stop automatic retries. If a run is interrupted between saves, the period can remain visible until restoration succeeds.
+
+Keep `config.local.json` and `.local/` private. Each computer needs its own login and validation. Use one active computer per account because run limits are stored locally.
+
+[Detailed operation and uninstall guide](docs/OPERATION.md) · [System architecture](docs/ARCHITECTURE.md) · [Retry and recovery rules](docs/RETRY-POLICY.md)

@@ -83,10 +83,11 @@ for (const failure of ['before-first-save', 'after-first-save', 'before-restore'
       if (calls === target && failure.startsWith('after')) throw new WorkflowError('save-unconfirmed', true);
     };
     const start = Date.now();
-    assert.equal((await runCycle({ directory, adapter, now: start })).outcome, 'failed');
+    const first = await runCycle({ directory, adapter, now: start });
+    assert.equal(first.outcome, 'failed');
     assert.ok(await readJson(path.join(directory, 'pending-cycle.json')));
     adapter.saveName = save;
-    assert.equal((await runCycle({ directory, adapter, now: start + 61000 })).outcome, 'restored');
+    assert.equal((await runCycle({ directory, adapter, now: Date.parse(first.nextEligibleAt) })).outcome, 'restored');
     assert.equal(adapter.name, 'Original');
     assert.ok(adapter.writes.filter(value => value === 'Original.').length <= 1);
   }));

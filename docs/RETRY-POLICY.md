@@ -14,12 +14,12 @@ The owner explicitly requested a temporary one-minute live test. `npm run test-m
 - For interrupted processes or legacy failed records with unknown failure time, persist detection time as `failedAt` and wait 60 seconds from that point. Restarting again must not reset that timestamp.
 - Both normal edits and restoration use the same budget. After the second failure, stop all workflow attempts for the remainder of that window, including recovery. Retain the journal and show unresolved restoration on the dashboard.
 - A complete two-save sequence is one workflow attempt, not two attempts. The retry must reconcile the original attempt before deciding whether further writes are needed; it must not blindly repeat both saves.
-- Persist the window start, attempt count, attempt IDs and next eligible time before browser interaction. Crashes consume the reserved attempt. Restart, sign-in, resume, manual save/recover commands and repeated scheduler triggers must not reset or bypass the budget.
+- Persist the window start, attempt count, attempt IDs and next eligible time before browser interaction. Crashes consume the reserved attempt. Restarting the worker or running a manual command keeps the current budget. A new Windows sign-in or wake signal can open a fresh window once, including after retryable failures. Pending restoration takes priority. A sign-in or wake does not clear a manual-attention block.
 - Use the exclusive lock around reservation and execution. Overlapping or budget-blocked invocations are skips, not additional failed attempts. Do not enable Task Scheduler automatic restart-on-failure or nested browser retries.
 
 ## Retry eligibility and reconciliation
 
-Transient navigation/network failures or ambiguous submission confirmations can use the one retry. It must freshly observe the persisted Name in the verified Basic details dialog first:
+Transient navigation or network failures, ambiguous submission confirmations, and a detected editor change before Save can use the one retry. If the app stopped before the first Save, it can start the cycle again in a fresh editor. If submission may have occurred, it must freshly observe the persisted Name first:
 
 | Observed state | Retry behavior |
 |---|---|

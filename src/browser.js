@@ -166,14 +166,37 @@ export function createBrowserAdapter(page, config, { discoverSuccess = false, pa
   };
 }
 
+export async function minimizeBrowserWindow(page) {
+  const session = await page.context().newCDPSession(page);
+  try {
+    const { windowId } = await session.send('Browser.getWindowForTarget');
+    await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } });
+  } finally {
+    await session.detach();
+  }
+}
+
 export function lazyBrowserAdapter(directory, config, options) {
   let context, adapter;
   async function get() {
     if (!context) {
       try {
         context = await chromium.launchPersistentContext(directory, { channel: config.browserChannel ?? 'msedge', headless: config.headless, viewport: { width: 1280, height: 900 } });
-        adapter = createBrowserAdapter(context.pages()[0] ?? await context.newPage(), config, options);
       } catch { throw new WorkflowError('browser-launch-failed', true); }
+      const page = context.pages()[0] ?? await context.newPage();
+      if (options?.minimize && config.headless !== true) {
+        try { await minimizeBrowserWindow(page); }
+        catch {
+          try {
+            await context.close();
+            context = null;
+          } catch {
+            // Leave the context available for the caller's cleanup.
+          }
+          throw new WorkflowError('browser-minimize-failed');
+        }
+      }
+      adapter = createBrowserAdapter(page, config, options);
     }
     return adapter;
   }

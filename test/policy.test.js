@@ -58,18 +58,19 @@ test('recovery shares budget, waits after two failures and counts completed cycl
     async readName() { reads++; return name; },
     async saveName(expected, next) { if (fail) throw new WorkflowError('offline', true); assert.equal(name, expected); name = next; }
   };
-  await runCycle({ directory, adapter, now: start, recoverOnly: true });
-  await runCycle({ directory, adapter, now: start + 61000, recoverOnly: true });
+  const recoverAt = now => runCycle({ directory, adapter, now, clock: () => now, recoverOnly: true });
+  assert.equal((await recoverAt(start)).outcome, 'failed');
+  assert.equal((await recoverAt(start + 61000)).outcome, 'failed');
   const previousReads = reads;
-  assert.equal((await runCycle({ directory, adapter, now: start + 120000, recoverOnly: true })).outcome, 'skipped');
+  assert.equal((await recoverAt(start + 120000)).outcome, 'skipped');
   assert.equal(reads, previousReads);
   fail = false;
-  await runCycle({ directory, adapter, now: start + 3600000, recoverOnly: true });
+  await recoverAt(start + 3600000);
   assert.equal(name, 'Original');
   assert.equal(summarizeHistory(await readHistory(directory), start).completedTotal, 1);
   // Simulate a crash after finalization records but before removing journal.
   await writeJson(path.join(directory, 'pending-cycle.json'), { ...cycle, phase: 'restored' });
-  await runCycle({ directory, adapter, now: start + 7200000, recoverOnly: true });
+  await recoverAt(start + 7200000);
   assert.equal(summarizeHistory(await readHistory(directory), start).completedTotal, 1);
 }));
 

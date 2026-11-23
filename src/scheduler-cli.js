@@ -27,7 +27,9 @@ try {
     try {
       const result = available ? await runScheduledTick({ root, directory,
         canRun: async () => !stopping && (!managed || (await windowsTaskStatus(root)).state === 'enabled'),
-        createAdapter: config => lazyBrowserAdapter(path.join(directory, 'browser', config.browserChannel ?? 'msedge'), config) }) : { outcome: 'skipped' };
+        createAdapter: config => lazyBrowserAdapter(
+          path.join(directory, 'browser', config.browserChannel ?? 'msedge'), config, { minimize: managed && process.platform === 'win32' }
+        ) }) : { outcome: 'skipped' };
       if (result.outcome !== 'skipped') console.log(JSON.stringify(result));
     } catch { console.error(JSON.stringify({ outcome: 'failed', reason: 'Scheduler tick could not complete; inspect local setup.' })); }
     // Short wall-clock polling naturally resumes with one eligibility check;

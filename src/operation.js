@@ -44,6 +44,9 @@ export async function automationReadiness(directory, config) {
 
 const outcomes = { 'attempt-started': 'Attempt started', 'cycle-completed': 'Update completed', 'cycle-failed': 'Update failed', 'recovery-failed': 'Recovery failed', 'recovery-restored': 'Original name restored' };
 const reasons = {
+  'browser-minimize-failed': 'Chrome could not be minimized. The attempt stopped before opening the profile.',
+  'other-fields-changed': 'Another editor field changed before Save. No save was sent.',
+  'editor-changed-before-save': 'The editor changed before Save. No save was sent.',
   'unexpected-profile-origin': 'Browser left the configured profile site; update stopped',
   'authentication-required': 'Manual login or security check required', 'access-restricted': 'Access restricted; manual attention required',
   'name-conflict': 'Profile changed; manual reconciliation required', 'name-validation-rejected': 'Site rejected the temporary value',

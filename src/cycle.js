@@ -7,6 +7,8 @@ import { recordHistory, readHistory } from './history.js';
 import { WorkflowError, failureCode } from './errors.js';
 import { validateTestSession } from './test-session.js';
 
+const editorChangedBeforeSave = reason => ['other-fields-changed', 'editor-changed-before-save'].includes(reason);
+
 export const phases = ['prepared', 'temporary-submit-intent', 'temporary-verified', 'restore-submit-intent', 'restored'];
 
 export function createCycle(originalName) {
@@ -114,10 +116,21 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
     if (recoverOnly && !cycle) return { outcome: 'nothing-to-recover' };
     const state = await readJson(stateFile, {});
     const previous = await readJson(budgetFile, null);
+    let unusedJournal = false;
     if (previous) {
       validateBudget(previous);
       let budgetChanged = false;
       const interrupted = previous.attempts.at(-1);
+      const rejectedBeforeSave = interrupted.outcome === 'failed' && editorChangedBeforeSave(interrupted.reason);
+      // Migrate older attempts that classified this local form guard as permanent.
+      if (previous.blocked && rejectedBeforeSave) {
+        previous.blocked = false;
+        budgetChanged = true;
+      }
+      unusedJournal = cycle?.phase === 'temporary-submit-intent' && cycle.id === previous.cycleId &&
+        interrupted.action === 'cycle' && rejectedBeforeSave && (interrupted.stoppedBeforeSave === true || history.some(row =>
+          row.eventId === `${interrupted.id}:failed` && row.cycleId === cycle.id &&
+          row.phase === cycle.phase && row.reason === interrupted.reason));
       if (interrupted.outcome === 'running') {
         interrupted.outcome = 'failed';
         interrupted.reason = 'process-interrupted';
@@ -141,16 +154,31 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
         });
       }
     }
+    if (unusedJournal && recoverOnly) {
+      await fs.unlink(journalFile);
+      return { outcome: 'nothing-to-recover', reason: 'no-save-was-sent' };
+    }
     // Preserve the earlier prototype's cooldown during migration.
     if (!minuteTest && !previous && !cycle && !(sessionStartedAt > Date.parse(state.lastSuccessAt)) &&
         !due(state, { minimumIntervalMinutes }, now)) return { outcome: 'skipped', reason: 'minimum-interval' };
-    const freshSession = !cycle && !minuteTest && previous?.closed &&
+    // A new Windows session starts a new budget after transient failures too.
+    // Access restrictions and other manual-attention failures keep their block.
+    const freshSession = !minuteTest && previous && !previous.blocked &&
       sessionStartedAt > Math.max(Date.parse(previous.attempts.at(-1).startedAt), Date.parse(state.lastSuccessAt) || 0);
-    const reserved = reserveAttempt(freshSession ? null : previous, { now, minimumIntervalMinutes, cycleId: cycle?.id, action: cycle ? 'recovery' : 'cycle', minuteTest, scheduledIntervalMs });
+    if (freshSession && previous.attempts.at(-1).outcome === 'failed') {
+      const retryAt = Date.parse(previous.attempts.at(-1).failedAt) + 60000;
+      if (now < retryAt) return { outcome: 'skipped', reason: 'retry-wait', nextEligibleAt: new Date(retryAt).toISOString() };
+    }
+    const resumeCycle = unusedJournal ? null : cycle;
+    const reserved = reserveAttempt(freshSession ? null : previous, { now, minimumIntervalMinutes, cycleId: resumeCycle?.id, action: resumeCycle ? 'recovery' : 'cycle', minuteTest, scheduledIntervalMs });
     if (reserved.skipped) return { outcome: 'skipped', reason: reserved.budgetState, nextEligibleAt: reserved.nextEligibleAt };
     if (lockReservation) {
       releaseReservation = await lockReservation();
       if (!(await authorize({ reservation: true }))) return { outcome: 'skipped', reason: 'workflow-off' };
+    }
+    if (unusedJournal) {
+      await fs.unlink(journalFile);
+      cycle = null;
     }
     ({ budget, attempt } = reserved);
     if (minuteTest) {
@@ -177,16 +205,24 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
     return await restore(cycle.temporaryName);
   } catch (error) {
     if (!attempt) throw new Error('Local state invalid; manual reconciliation required');
+    const reason = failureCode(error);
+    // These adapter outcomes are emitted before clicking Save. Keep the
+    // journal if a temporary save may have happened or recovery was underway.
+    const stoppedBeforeSave = attempt.action === 'cycle' && cycle?.phase === 'temporary-submit-intent' && editorChangedBeforeSave(reason);
     attempt.outcome = 'failed';
     attempt.failedAt = timestamp();
-    const retryable = error instanceof WorkflowError && error.retryable;
+    const retryable = error instanceof WorkflowError && (error.retryable || editorChangedBeforeSave(reason));
     budget.blocked = !retryable;
-    attempt.reason = failureCode(error);
+    attempt.reason = reason;
+    if (stoppedBeforeSave) attempt.stoppedBeforeSave = true;
     await writeJson(budgetFile, budget);
-    await event(attempt.action === 'recovery' ? 'recovery-failed' : 'cycle-failed', `${attempt.id}:failed`, failureCode(error));
+    await event(attempt.action === 'recovery' ? 'recovery-failed' : 'cycle-failed', `${attempt.id}:failed`, reason);
+    if (stoppedBeforeSave) await fs.unlink(journalFile);
     const state = await readJson(stateFile, {});
-    await writeJson(stateFile, { ...state, status: 'failed', lastError: 'Cycle interrupted; inspect pending recovery before another cycle' });
-    return { outcome: 'failed', reason: failureCode(error), retryable, ...budgetStatus(budget, currentTime()) };
+    await writeJson(stateFile, { ...state, status: 'failed', lastError: stoppedBeforeSave
+      ? 'Editor changed before submission. No save was sent.'
+      : 'Cycle interrupted; inspect pending recovery before another cycle' });
+    return { outcome: 'failed', reason, retryable, ...budgetStatus(budget, currentTime()) };
   } finally {
     try {
       await releaseReservation?.();

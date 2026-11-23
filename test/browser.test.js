@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { createBrowserAdapter } from '../src/browser.js';
+import { createBrowserAdapter, minimizeBrowserWindow } from '../src/browser.js';
 import { runCycle } from '../src/cycle.js';
 import { readHistory, summarizeHistory } from '../src/history.js';
 
@@ -15,7 +15,7 @@ const config = {
 
 async function fixture(options, fn) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'browser-cycle-'));
-  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const browser = await chromium.launch({ channel: options.minimized ? 'chrome' : 'msedge', headless: !options.minimized });
   const page = await browser.newPage();
   const model = { name: 'Original Name', saves: [], requests: 0, ...options };
   await page.route('https://profile.test/**', async route => {
@@ -71,7 +71,8 @@ async function fixture(options, fn) {
         ${model.initialHeadline ? "open('Resume headline');" : ''}
       </script></body></html>` });
   });
-  try { await fn({ directory, page, model, adapter: createBrowserAdapter(page, config, { pause: async () => {} }) }); }
+  const browserConfig = options.minimized ? { ...config, timeoutMs: 30000 } : config;
+  try { await fn({ directory, page, model, adapter: createBrowserAdapter(page, browserConfig, { pause: async () => {} }) }); }
   finally { await browser.close(); await fs.rm(directory, { recursive: true, force: true }); }
 }
 
@@ -85,6 +86,17 @@ test('real browser closes wrong same-URL dialog and completes only Basic details
   ]);
   assert.equal(model.name, 'Original Name');
   assert.equal(summarizeHistory(await readHistory(directory)).completedTotal, 1);
+}));
+
+test('visible Chrome can complete both mock saves while minimized', { skip: process.platform !== 'win32' }, async () => fixture({ minimized: true }, async ({ directory, adapter, model, page }) => {
+  await minimizeBrowserWindow(page);
+  const session = await page.context().newCDPSession(page);
+  try {
+    assert.equal((await session.send('Browser.getWindowForTarget')).bounds.windowState, 'minimized');
+    const result = await runCycle({ directory, adapter });
+    assert.equal(result.outcome, 'restored', JSON.stringify(result));
+    assert.deepEqual(model.saves.map(row => row.name), ['Original Name.', 'Original Name']);
+  } finally { await session.detach(); }
 }));
 
 test('redirect to another origin stops before reading or saving the profile', async () => fixture({}, async ({ directory, adapter, model, page }) => {
@@ -107,6 +119,7 @@ test('other field changing during Name edit blocks submission', async () => fixt
   const result = await runCycle({ directory, adapter });
   assert.equal(result.reason, 'other-fields-changed');
   assert.equal(model.saves.length, 0);
+  await assert.rejects(fs.access(path.join(directory, 'pending-cycle.json')), { code: 'ENOENT' });
 }));
 
 test('challenge stops with no submission or automatic retry', async () => fixture({ challenge: true }, async ({ directory, adapter, model }) => {

@@ -2,7 +2,15 @@
 
 ## Phase 2 results
 
-The suite currently contains 38 checks: 25 state/policy/history/control tests and 13 real headless Edge tests against intercepted mock routes. These cover the full two-save cycle, same-URL wrong dialog, unchanged other fields, CAPTCHA, lost confirmation/restoration, validation rejection and rate limiting. Regression cases cover login-interrupted navigation/clicks, CAPTCHA/access-restriction interruptions, uninspectable pages, a normal transient click failure, a 90-second failure followed by a full 60-second delay, late-window failures and legacy timestamp migration. No production account or Naukri request is used. Live selectors, site permission, Chrome login and scheduling remain unverified. Dashboard On/Off UI is Phase 4; Phase 2 checks the persisted activation flag before attempts and retries.
+The suite contains state/policy/history/control tests, Phase 3 verification tests and 13 real headless Edge tests against intercepted mock routes. These cover the full two-save cycle, same-URL wrong dialog, unchanged other fields, CAPTCHA, lost confirmation/restoration, validation rejection and rate limiting. Regression cases cover login-interrupted navigation/clicks, CAPTCHA/access-restriction interruptions, uninspectable pages, a normal transient click failure, a 90-second failure followed by a full 60-second delay, late-window failures and legacy timestamp migration. No production account or Naukri request is used. Live selectors, site permission, Chrome login and scheduling remain unverified. Dashboard On/Off UI is Phase 4; Phase 2 checks the persisted activation flag before attempts and retries.
+
+## Phase 3 tooling
+
+The verification tests cover redacted dry-run evidence, configuration changes, failed-check invalidation, strict activation, a complete fresh supervised cycle, cooldown preservation, no automatic retry, restoration-only results, locking and corrupt state. Run `npm run check-setup` for offline diagnostics and follow [the supervised validation guide](SUPERVISED-VALIDATION.md) for actual account checks. Tooling coverage does not complete live Phase 3 validation.
+
+## Phase 4 tooling
+
+Operational tests cover explicit unattended readiness, On/Off without budget resets, delayed retry/exhaustion, recovery priority, no missed-hour replay, runner/workflow locks, browser shutdown under the workflow lock, pause gating, Host/Origin/CSRF validation, malformed/oversized requests and redacted corrupt-state reporting. A real Edge browser verifies local dashboard rendering, persisted On/Off and desktop/mobile layouts. Task Scheduler accepted the generated task XML in preview mode, without registration. Actual task installation, Windows lifecycle behavior and the ten-hour pilot remain manual checks in [operation](OPERATION.md).
 
 The updated release must also pass every [strict retry-policy test](RETRY-POLICY.md), the [two-save Name workflow](NAME-UPDATE-WORKFLOW.md) tests and [dashboard/scheduling acceptance checks](DASHBOARD-AND-SCHEDULING.md). The earlier prototype checks below are historical and do not alone establish readiness. In particular, verify there is no third workflow attempt, including recovery, after two failures in a 60-minute window.
 

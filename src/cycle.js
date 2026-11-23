@@ -5,6 +5,7 @@ import { acquireLock, due, readJson, writeJson } from './core.js';
 import { reserveAttempt, budgetStatus, validateBudget } from './budget.js';
 import { recordHistory, readHistory } from './history.js';
 import { WorkflowError, failureCode } from './errors.js';
+import { validateTestSession } from './test-session.js';
 
 export const phases = ['prepared', 'temporary-submit-intent', 'temporary-verified', 'restore-submit-intent', 'restored'];
 
@@ -45,13 +46,15 @@ export function publicCycleStatus(cycle) {
  * Throw on challenge, conflict or ambiguous result. Exceptions may contain PII;
  * this layer never persists exception messages.
  */
-export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60, recoverOnly = false, now = Date.now(), authorize = async () => true, clock }) {
-  if (!Number.isFinite(minimumIntervalMinutes) || minimumIntervalMinutes < 60) throw new Error('Minimum interval must be at least 60 minutes');
+export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60, recoverOnly = false, now = Date.now(), authorize = async () => true, clock, closeAdapter = false, minuteTestSessionId, sessionStartedAt, scheduledIntervalMs, lockReservation }) {
+  const minuteTest = typeof minuteTestSessionId === 'string' && !!minuteTestSessionId;
+  if (!Number.isFinite(minimumIntervalMinutes) || (minuteTest ? minimumIntervalMinutes !== 1 : minimumIntervalMinutes < 60)) throw new Error('Minimum interval must be at least 60 minutes outside a bounded minute test');
   await fs.mkdir(directory, { recursive: true });
   const release = await acquireLock(directory);
   const journalFile = path.join(directory, 'pending-cycle.json');
   const stateFile = path.join(directory, 'state.json');
-  const budgetFile = path.join(directory, 'budget.json');
+  const budgetFile = path.join(directory, minuteTest ? 'minute-test-budget.json' : 'budget.json');
+  const testFile = path.join(directory, 'minute-test.json');
   let cycle;
   let budget, attempt;
   const clockStart = Date.now();
@@ -60,6 +63,7 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
   const event = (outcome, eventId, reason) => recordHistory(directory, {
     eventId, cycleId: cycle?.id ?? budget.cycleId, attemptId: attempt.id,
     at: timestamp(), action: attempt.action, outcome, phase: cycle?.phase ?? 'before-editor',
+    ...(minuteTest ? { mode: 'minute-test' } : {}),
     ...(reason ? { reason } : {})
   });
   const persist = async phase => {
@@ -90,12 +94,23 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
     if (await adapter.readName() !== cycle.originalName) throw new WorkflowError('restoration-unverified', true);
     return finish();
   };
+  let releaseReservation;
   try {
     if (!(await authorize())) return { outcome: 'skipped', reason: 'workflow-off' };
-    // Validate storage before reserving or accessing the browser.
-    await readHistory(directory);
     cycle = await readJson(journalFile, null);
     if (cycle) validateCycle(cycle);
+    const testSession = await readJson(testFile, null);
+    if (testSession) validateTestSession(testSession);
+    if (minuteTest) {
+      if (!testSession || testSession.id !== minuteTestSessionId || testSession.status !== 'running' ||
+          now >= Date.parse(testSession.expiresAt) || testSession.cyclesStarted >= 2) return { outcome: 'skipped', reason: 'minute-test-ended' };
+    } else if (testSession) {
+      if (testSession.status === 'running' && now < Date.parse(testSession.expiresAt)) return { outcome: 'skipped', reason: 'minute-test-running' };
+      const next = Date.parse(testSession.lastAttemptAt) + minimumIntervalMinutes * 60000;
+      if (!cycle && testSession.lastAttemptAt && now < next && !(sessionStartedAt > Date.parse(testSession.lastAttemptAt))) return { outcome: 'skipped', reason: 'minimum-interval-after-test', nextEligibleAt: new Date(next).toISOString() };
+    }
+    // Validate storage before reserving or accessing the browser.
+    await readHistory(directory);
     if (recoverOnly && !cycle) return { outcome: 'nothing-to-recover' };
     const state = await readJson(stateFile, {});
     const previous = await readJson(budgetFile, null);
@@ -121,11 +136,27 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
       }
     }
     // Preserve the earlier prototype's cooldown during migration.
-    if (!previous && !cycle && !due(state, { minimumIntervalMinutes }, now)) return { outcome: 'skipped', reason: 'minimum-interval' };
-    const reserved = reserveAttempt(previous, { now, minimumIntervalMinutes, cycleId: cycle?.id, action: cycle ? 'recovery' : 'cycle' });
+    if (!minuteTest && !previous && !cycle && !(sessionStartedAt > Date.parse(state.lastSuccessAt)) &&
+        !due(state, { minimumIntervalMinutes }, now)) return { outcome: 'skipped', reason: 'minimum-interval' };
+    const freshSession = !cycle && !minuteTest && previous?.closed &&
+      sessionStartedAt > Math.max(Date.parse(previous.attempts.at(-1).startedAt), Date.parse(state.lastSuccessAt) || 0);
+    const reserved = reserveAttempt(freshSession ? null : previous, { now, minimumIntervalMinutes, cycleId: cycle?.id, action: cycle ? 'recovery' : 'cycle', minuteTest, scheduledIntervalMs });
     if (reserved.skipped) return { outcome: 'skipped', reason: reserved.budgetState, nextEligibleAt: reserved.nextEligibleAt };
+    if (lockReservation) {
+      releaseReservation = await lockReservation();
+      if (!(await authorize())) return { outcome: 'skipped', reason: 'workflow-off' };
+    }
     ({ budget, attempt } = reserved);
+    if (minuteTest) {
+      testSession.cyclesStarted++;
+      testSession.lastAttemptAt = new Date(now).toISOString();
+      await writeJson(testFile, testSession);
+    }
     await writeJson(budgetFile, budget);
+    if (releaseReservation) {
+      await releaseReservation();
+      releaseReservation = undefined;
+    }
     await event('attempt-started', `${attempt.id}:started`);
     await writeJson(stateFile, { ...state, lastAttemptAt: new Date(now).toISOString(), status: 'running', lastError: null });
     if (cycle) return await restore(await adapter.readName());
@@ -151,6 +182,10 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
     await writeJson(stateFile, { ...state, status: 'failed', lastError: 'Cycle interrupted; inspect pending recovery before another cycle' });
     return { outcome: 'failed', reason: failureCode(error), retryable, ...budgetStatus(budget, currentTime()) };
   } finally {
-    await release();
+    try {
+      await releaseReservation?.();
+    } finally {
+      try { if (closeAdapter) await adapter.close(); } finally { await release(); }
+    }
   }
 }

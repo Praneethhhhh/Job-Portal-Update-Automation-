@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profile Scheduler · Local dashboard</title>
+  <link rel="stylesheet" href="/dashboard.css">
+  <script src="/dashboard.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <a class="brand" href="/" aria-label="Profile Scheduler home"><span class="brand-mark">P</span><span>Profile<br> Scheduler</span></a>
+      <div class="nav-current">Overview</div>
+      <div class="aside-note"><span class="local-dot"></span> Local workspace<p>Runs on this computer.<br>No cloud service.</p></div>
+    </aside>
+    <main>
+      <header><div><div class="eyebrow">YOUR LOCAL WORKSPACE</div><h1>Overview</h1><p class="intro">A clear view of your profile updates.</p></div><div class="timezone">India Standard Time<span>Asia/Calcutta</span></div></header>
+      <div id="error" class="notice error" role="alert" hidden></div>
+      <section class="control-card" aria-labelledby="workflow-title">
+        <div class="control-copy"><div class="eyebrow">WORKFLOW</div><h2 id="workflow-title">Loading status…</h2><p id="workflow-description">Checking this computer’s configuration.</p><p>Last outcome: <strong id="last-outcome">—</strong></p></div>
+        <div class="activation"><span id="activation-label">Off</span><button id="activation" role="switch" aria-checked="false" aria-label="Enable profile workflow" disabled><span></span></button></div>
+        <p class="control-foot">You can close this page after changing the control. Turning Off blocks new attempts; a reserved cycle may finish restoring your original name.</p>
+      </section>
+      <section class="details setup-status" aria-label="Account setup">
+        <div><div class="metric-label">Account connection</div><strong id="account-session">Checking…</strong><p>Your saved login stays on this computer. Sessions may expire.</p></div>
+        <div><div class="metric-label">Page check</div><strong id="page-checks">Checking…</strong><p>Read-only check for the browser mode selected in setup.</p></div>
+        <div><div class="metric-label">Supervised live test</div><strong id="live-check">Checking…</strong><p>Temporary change and exact restoration.</p></div>
+      </section>
+      <div id="recovery" class="notice recovery" hidden><strong>Restoration needs attention</strong><p>A pending cycle must be reconciled before a new update. Recovery uses the same two-attempt budget.</p></div>
+      <section class="metrics" aria-label="Update totals">
+        <article class="metric"><div class="metric-label">Completed today</div><div class="metric-value" id="completed-today">—</div><p><span id="completed-total">—</span> completed all time</p></article>
+        <article class="metric"><div class="metric-label">Failed attempts today</div><div class="metric-value" id="failed-today">—</div><p><span id="failed-total">—</span> failed all time</p></article>
+        <article class="metric"><div class="metric-label">Current window</div><div class="metric-value budget-value" id="attempts">—<small> / 2 attempts</small></div><p id="budget-state">Waiting for status</p></article>
+      </section>
+      <section class="details" aria-label="Schedule details">
+        <div><div class="metric-label">Windows scheduler</div><strong id="scheduler">Checking…</strong><p id="scheduler-note">Read directly from Windows.</p></div>
+        <div><div class="metric-label">Next eligible attempt</div><strong id="next-eligible">—</strong><p>Estimate only. Sleep, network and login may delay execution.</p></div>
+        <div><div class="metric-label">Last completed update</div><strong id="last-completed">—</strong><p>Both saves and exact restoration count as one update.</p></div>
+      </section>
+      <section class="activity-card" aria-labelledby="activity-title">
+        <div class="section-heading"><h2 id="activity-title">Recent activity</h2><button class="refresh" id="refresh">Refresh</button></div>
+        <div class="table-wrap"><table><thead><tr><th scope="col">Time · IST</th><th scope="col">Action</th><th scope="col">Result</th><th scope="col">Details</th></tr></thead><tbody id="activity"></tbody></table></div>
+        <div id="empty" class="empty"><span class="empty-icon">✓</span><h3>No activity yet</h3><p>Verified updates and recovery attempts will appear here.</p></div>
+      </section>
+      <footer><span>Profile Scheduler · On this computer</span><span id="last-refreshed" aria-live="polite">Connecting…</span></footer>
+    </main>
+  </div>
+</body>
+</html>

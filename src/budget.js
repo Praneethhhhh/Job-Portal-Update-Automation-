@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 export function validateBudget(budget) {
   if (!budget || budget.version !== 1 || !Number.isFinite(Date.parse(budget.startedAt)) ||
-      !Number.isFinite(budget.intervalMs) || budget.intervalMs < 3600000 ||
+      (budget.mode !== undefined && !['minute-test', 'scheduled'].includes(budget.mode)) ||
+      !validInterval(budget.mode, budget.intervalMs) ||
       typeof budget.cycleId !== 'string' || !budget.cycleId ||
       typeof budget.closed !== 'boolean' || typeof budget.blocked !== 'boolean' ||
       !Array.isArray(budget.attempts) || budget.attempts.length < 1 || budget.attempts.length > 2 ||
@@ -12,6 +13,13 @@ export function validateBudget(budget) {
     throw new Error('Invalid hourly budget; manual reconciliation required');
   }
   return budget;
+}
+
+function validInterval(mode, ms) {
+  if (!Number.isFinite(ms)) return false;
+  if (mode === 'minute-test') return ms === 60000;
+  if (mode === 'scheduled') return ms >= 2100000 && ms <= 2700000 && ms % 1000 === 0;
+  return ms >= 3600000;
 }
 
 export function budgetStatus(budget, now = Date.now()) {
@@ -32,17 +40,24 @@ export function budgetStatus(budget, now = Date.now()) {
   };
 }
 
-export function reserveAttempt(previous, { now, minimumIntervalMinutes, cycleId, action }) {
+export function reserveAttempt(previous, { now, minimumIntervalMinutes, cycleId, action, minuteTest = false, scheduledIntervalMs }) {
+  if (minuteTest ? minimumIntervalMinutes !== 1 : minimumIntervalMinutes < 60) throw new Error('Invalid attempt interval');
   if (previous) validateBudget(previous);
+  if (previous && (previous.mode === 'minute-test') !== minuteTest) throw new Error('Budget mode mismatch');
   if (previous) {
     const status = budgetStatus(previous, now);
     if (!['ready', 'retry-ready'].includes(status.budgetState)) return { skipped: true, ...status };
   }
   const active = previous && now < Date.parse(previous.startedAt) + previous.intervalMs;
   const budget = active ? structuredClone(previous) : {
-    version: 1, startedAt: new Date(now).toISOString(), intervalMs: minimumIntervalMinutes * 60000,
+    version: 1, startedAt: new Date(now).toISOString(), intervalMs: scheduledIntervalMs ?? minimumIntervalMinutes * 60000,
     cycleId: cycleId ?? randomUUID(), closed: false, blocked: false, attempts: []
   };
+  if (minuteTest) budget.mode = 'minute-test';
+  if (!active && scheduledIntervalMs !== undefined) {
+    if (minuteTest || !validInterval('scheduled', scheduledIntervalMs)) throw new Error('Invalid scheduled interval');
+    budget.mode = 'scheduled';
+  }
   const attempt = { id: randomUUID(), startedAt: new Date(now).toISOString(), action, outcome: 'running' };
   budget.attempts.push(attempt);
   return { budget, attempt };

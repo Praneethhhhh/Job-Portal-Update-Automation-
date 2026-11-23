@@ -7,10 +7,16 @@
   "scripts": {
     "login": "node src/cli.js login",
     "inspect": "node src/cli.js inspect",
+    "check-setup": "node src/verification-cli.js check-setup",
+    "verify": "node src/verification-cli.js verify",
+    "verify-save": "node src/verification-cli.js verify-save",
     "dry-run": "node src/cli.js dry-run",
     "save": "node src/cli.js save",
     "recover": "node src/cli.js recover",
     "status": "node src/cli.js status",
+    "dashboard": "node src/dashboard-cli.js",
+    "scheduler": "node src/scheduler-cli.js",
+    "test-minute": "node src/minute-test-cli.js",
     "test": "node --test"
   },
   "dependencies": { "playwright": "^1.56.0" },

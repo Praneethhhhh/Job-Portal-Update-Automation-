@@ -19,6 +19,18 @@ function browser(initial) {
   };
 }
 
+test('a new Windows session starts one fresh cycle and anchors the next hour', async () => fixture(async directory => {
+  const adapter = browser('Original');
+  const start = Date.now();
+  assert.equal((await runCycle({ directory, adapter, now: start })).outcome, 'restored');
+  const wake = start + 600000;
+  assert.equal((await runCycle({ directory, adapter, now: wake + 100, sessionStartedAt: wake })).outcome, 'restored');
+  const repeated = await runCycle({ directory, adapter, now: wake + 1000, sessionStartedAt: wake });
+  assert.equal(repeated.outcome, 'skipped');
+  assert.equal(Date.parse(repeated.nextEligibleAt), wake + 100 + 3600000);
+  assert.equal(adapter.writes.length, 4);
+}));
+
 test('names preserve punctuation, Unicode and whitespace exactly', () => {
   for (const name of ['Alex', 'Alex.', '  Renée 王.  ']) {
     const cycle = createCycle(name);

@@ -22,8 +22,8 @@ Screenshots establish visual requirements, not DOM selectors. Actual accessible 
 3. Read the exact current Name as `originalName`; require a nonempty supported input. Compute `temporaryName = originalName + '.'`. Preserve original whitespace and punctuation; restoration must never use trim or a generic remove-last-dot operation.
 4. Snapshot all other editable values. Before any mutation, atomically persist a private recovery journal containing the original, temporary value, cycle ID and phase.
 5. Fill only Name with the temporary value. Recheck all other values, editor identity and challenge status. Record submit intent before clicking the dialog-scoped Save exactly once.
-6. Require a new success signal and reopen Basic details to verify Name equals the temporary value. A toast alone is insufficient.
-7. Restore the journaled original Name, preserving every other field. Record restore intent, save once, and reopen Basic details to verify exact restoration.
+6. Wait at least five seconds after Save, then reopen Basic details to verify Name equals the temporary value. A toast alone is insufficient. Default `toast-and-editor` mode also requires the configured fresh toast. The live site's optional `persisted-editor` mode requires modal closure and a fresh navigation showing the exact requested value, without relying on a second toast.
+7. Restore the journaled original Name, preserving every other field. Record restore intent, save once, wait at least five seconds, and reopen Basic details to verify exact restoration.
 8. Mark the cycle complete and clear the pending journal only after verified restoration. Close the browser and release the lock. Event logs include phases and outcomes, never the Name values.
 
 The two saves are one hourly cycle. Do not wait an hour between them. If the original already ends in a period, append exactly one additional period and restore the original exactly; never infer a baseline by stripping punctuation. If validation rejects the temporary value, stop and reconcile current state without attempting other spelling changes.

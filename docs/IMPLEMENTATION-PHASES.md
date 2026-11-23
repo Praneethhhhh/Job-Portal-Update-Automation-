@@ -20,12 +20,16 @@ Implemented flushed JSONL outcome history, deduplicated completion IDs, IST dail
 
 Replaced the old save path with the coordinator and a lazy browser adapter. Added `recover`, Basic details heading verification, explicit Name targeting, other-field snapshot comparison, fresh confirmations and reopened persisted-value checks. Local browser tests cover same-URL wrong dialogs, full restoration, other-field changes, CAPTCHA, lost confirmation and validation rejection. Chrome and Edge are configurable; neither live Naukri compatibility nor selectors are verified yet.
 
-Initialized local Git on main with no commit or remote. `.local`, `config.local.json` and dependencies are ignored. Publishing awaits the user's instruction. Each additional Windows computer needs installation, its own manual login and local selector/config verification; never copy logged-in sessions through GitHub.
+Source is stored in local Git on main. `.local`, `config.local.json` and dependencies are ignored. GitHub publishing awaits the user's instruction. Each additional Windows computer needs installation, its own manual login and local selector/config verification; never copy logged-in sessions through GitHub.
 
-## Phase 3 — supervised Naukri validation
+## Phase 3 — supervised Naukri validation (tooling implemented; live checks pending)
 
 Establish site permission, manually authenticate, inspect actual controls, test dry-run and one complete live cycle. Verify original Name restoration and background execution. No local test establishes Naukri permission or compatibility.
 
-## Phase 4 — scheduling and operation
+`npm run check-setup` now diagnoses setup and local state offline without exposing private values. `npm run verify` and `npm run verify -- --background` record visible and headless read-only checks. `npm run verify-save` requires both checks for the current configuration and explicit activation/permission, then executes one visible supervised attempt under the normal budget. It never launches an automatic retry. Redacted evidence is stored in `.local/validation.json`; recovery alone cannot certify a fresh cycle. See [supervised validation](SUPERVISED-VALIDATION.md). These commands do not activate scheduling or establish permission automatically.
 
-Wire the validated command to sign-in and hourly execution, preserve cooldown across restarts, surface failures and verify pause/resume, sleep, overlapping triggers and a ten-hour pilot. Add a minimal local dashboard with an explicit default-Off On/Off control, completed-update counts, failures, recovery status, recent activity and next eligible attempt. Use existing local files plus outcome history; no database or cloud service. Follow [dashboard and scheduling requirements](DASHBOARD-AND-SCHEDULING.md).
+## Phase 4 — scheduling and operation (implemented locally; Windows pilot pending)
+
+Implemented the loopback dashboard, protected persisted On/Off control, redacted history/counts, recovery/budget display and Windows task-state probing. The independent worker checks eligibility every 15 seconds using the existing coordinator, shared budget and a separate runner lock. Sign-in/unlock/resume triggers plus an IgnoreNew watchdog start the hidden interactive-user worker without waking the machine or replaying missed hours. Pause/remove are graceful between reserved attempts. Activation and installation require current recorded Phase 3 evidence, site permission and manual `unattendedConfirmed`; installation can remain Off.
+
+Local tests cover request protection, privacy, On/Off persistence, cooldowns, one delayed retry, exhausted budget, recovery priority, lock contention, long sleep gaps, pause gating and browser rendering at desktop/mobile sizes. Windows accepted the generated task XML in preview mode without registration. Actual sign-in, sleep/resume, shutdown, pause/resume and a ten-hour pilot remain manual release checks. See [operation](OPERATION.md) and [dashboard and scheduling requirements](DASHBOARD-AND-SCHEDULING.md).

@@ -6,6 +6,8 @@ This requirement takes precedence over earlier no-retry language and recovery ex
 
 ## Budget and timing
 
+The owner explicitly requested a temporary one-minute live test. `npm run test-minute` is a separate bounded mode: two visible cycles only, a 60-second wait after the first completed cycle, the existing five-second waits after Save, and no automatic retry. It uses a separate test budget and a five-minute session deadline, retains shared recovery/history/locking, and leaves the normal workflow Off. It does not rewrite the normal 60-minute budget. Normal activity is blocked during the test and for the configured normal interval after its last attempt. The rules below continue to govern ordinary scheduling and manual save/recovery commands.
+
 - Each hourly window permits at most two workflow attempts: the initial attempt and one retry only if the first fails for a retryable reason. A successful initial attempt ends the window immediately.
 - A window begins when its first attempt is reserved and lasts 60 elapsed minutes; it is not a wall-clock hour bucket. For example, an initial attempt at 10:20 and a retry at 10:21 permit no third attempt before 11:20.
 - Wait 60 seconds **after the failure**, using a persisted `failedAt` timestamp, before the single retry. An attempt that runs for 90 seconds must still wait another 60 seconds. This is a local operational default, not a claim that Naukri approves this frequency. If the delay extends beyond the window, do not replay its retry; enter the next eligible window once, no sooner than the end of the failure delay. The hourly window remains anchored to the original attempt start.

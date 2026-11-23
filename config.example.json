@@ -1,11 +1,13 @@
 {
-  "enabled": false,
+  "enabled": true,
   "permissionConfirmed": false,
+  "unattendedConfirmed": false,
   "profileUrl": "https://www.naukri.com/mnjuser/profile",
   "headless": true,
   "browserChannel": "chrome",
   "minimumIntervalMinutes": 60,
   "timeoutMs": 30000,
+  "postSaveDelayMs": 5000,
   "selectors": {
     "edit": "",
     "editor": "",

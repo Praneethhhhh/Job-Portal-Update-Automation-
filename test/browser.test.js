@@ -71,7 +71,7 @@ async function fixture(options, fn) {
         ${model.initialHeadline ? "open('Resume headline');" : ''}
       </script></body></html>` });
   });
-  try { await fn({ directory, page, model, adapter: createBrowserAdapter(page, config) }); }
+  try { await fn({ directory, page, model, adapter: createBrowserAdapter(page, config, { pause: async () => {} }) }); }
   finally { await browser.close(); await fs.rm(directory, { recursive: true, force: true }); }
 }
 
@@ -85,6 +85,15 @@ test('real browser closes wrong same-URL dialog and completes only Basic details
   ]);
   assert.equal(model.name, 'Original Name');
   assert.equal(summarizeHistory(await readHistory(directory)).completedTotal, 1);
+}));
+
+test('redirect to another origin stops before reading or saving the profile', async () => fixture({}, async ({ directory, adapter, model, page }) => {
+  await page.route(config.profileUrl, route => route.fulfill({ status: 302, headers: { location: 'https://other.test/profile' } }));
+  await page.route('https://other.test/**', route => route.fulfill({ body: 'Other page' }));
+  const result = await runCycle({ directory, adapter });
+  assert.equal(result.reason, 'unexpected-profile-origin');
+  assert.equal(result.retryable, false);
+  assert.deepEqual(model.saves, []);
 }));
 
 test('wrong edit target cannot submit Resume headline', async () => fixture({ wrongEdit: true }, async ({ directory, adapter, model }) => {

@@ -1,6 +1,6 @@
 # Interfaces and data (Phase 2)
 
-No database or public HTTP API is needed. Phase 2 uses local commands and files. A private loopback dashboard control interface is planned for Phase 4; no API is implemented for it yet. Naukri is accessed through its web UI, not an undocumented API.
+No database or public HTTP API is needed. Local commands/files remain the data source. Phase 4 adds a private loopback dashboard with `GET /api/status` and protected `POST /api/activation`; it does not expose journals or browser state. Naukri is accessed through its web UI, not an undocumented API.
 
 | Command | Behavior |
 |---|---|
@@ -9,8 +9,13 @@ No database or public HTTP API is needed. Phase 2 uses local commands and files.
 | `save` | Full two-save cycle, or reconciliation of pending recovery; shared budget |
 | `recover` | Restoration only; activation and shared budget still apply |
 | `status` | Redacted last outcome, pending recovery, budget and history totals |
+| `check-setup` | Offline read-only setup, recovery, budget and validation diagnostics |
+| `dashboard` | Loopback On/Off control, counts, recovery, recent activity and Windows task state |
+| `scheduler` | Independent polling worker using the existing durable hourly budget |
+| `verify` / `verify --background` | Record visible/headless dry-run evidence without submitting |
+| `verify-save` | One visible supervised two-save attempt, requiring both dry-run checks; no automatic retry |
 
-Save/recover emit structured outcomes: `restored`, `failed`, `skipped`, `nothing-to-recover`. A transient first failure can emit `retry-scheduled` and one further result. Final failure exits 1, as do invalid state/config/lock errors; normal completion and skips exit 0. Generic CLI errors intentionally omit raw browser exception text. Status reports scheduler `not-checked` until Phase 4 integration.
+Save/recover emit structured outcomes: `restored`, `failed`, `skipped`, `nothing-to-recover`. A transient first failure can emit `retry-scheduled` and one further result. Final failure exits 1, as do invalid state/config/lock errors; normal completion and skips exit 0. Generic CLI errors intentionally omit raw browser exception text. Status and dashboard probe Windows for enabled/paused/not-installed state and report unknown when access fails. The offline Phase 3 setup diagnostic does not probe Windows.
 
 ## Local config
 
@@ -28,6 +33,7 @@ Save/recover emit structured outcomes: `restored`, `failed`, `skipped`, `nothing
 | `state.json` | lastAttemptAt, lastSuccessAt, status, cycleId, generic lastError |
 | `history.jsonl` | version, eventId, cycleId, attemptId, UTC at, action, outcome, optional phase/reason; no Name values |
 | `run.lock` | PID and start time; exclusive handle prevents concurrent execution |
+| `validation.json` | Phase 3 check names, statuses, timestamps and configuration hashes; no Name values or selectors |
 
 Journal phases: prepared, temporary-submit-intent, temporary-verified, restore-submit-intent, restored. `temporaryVerified` survives later phases; restored alone does not establish a completed update. Completion event ID is stable per cycle, and failure IDs are stable per attempt. History rejects malformed records and deduplicates IDs. An interrupted history append may require manual repair; no silent truncation is performed.
 

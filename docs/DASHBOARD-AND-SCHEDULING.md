@@ -2,7 +2,7 @@
 
 ## Scope and implementation timing
 
-Outcome recording and redacted status are implemented in Phase 2. Build the minimal local dashboard during Phase 4 together with scheduling. This keeps four phases and ensures run history exists before the UI is built. The dashboard and revised trigger are not implemented yet.
+Outcome recording and redacted status are implemented in Phase 2. The Phase 4 local dashboard and independent Windows worker are now implemented, with local HTTP/browser/control tests. Task XML has been checked in preview mode; actual installation, Windows lifecycle checks and the ten-hour pilot remain pending. See [operation](OPERATION.md).
 
 ## Schedule behavior
 
@@ -12,7 +12,7 @@ Outcome recording and redacted status are implemented in Phase 2. Build the mini
 - Pending recovery takes priority only within the shared two-attempt hourly budget. It restores only; it never bypasses exhausted budget. Follow [retry policy](RETRY-POLICY.md).
 - Do not wake the laptop. Do not replay missed hours. On resume, recover pending work first; otherwise attempt one cycle if due, and schedule the next one an hour later.
 - On a transient failure, allow one retry after 60 seconds. A second failure ends activity until the next hourly window. Manual recovery uses the same budget; no hidden retries are permitted.
-- Signing out, shutting down or sleeping stops execution. Sign-in/resume integration and scheduling mechanism will be validated in Phase 4; the original install-task script does not yet implement these requirements.
+- Signing out, shutting down or sleeping interrupts execution. The installer now defines interactive sign-in, unlock and resume triggers, with a watchdog for an exited worker. Actual Windows lifecycle behavior still requires the supervised Phase 4 pilot.
 - UI explains the next eligible attempt as an estimate: Windows availability, sleep, network and authentication can delay it. Never claim exact execution while offline or asleep.
 
 ## Dashboard
@@ -44,7 +44,7 @@ Add a private append-only local history journal; no database or network API is n
 
 Historical failure counts remain even after successful recovery. Repeated recovery invocations are separate activities linked to the original cycle. Persist completion before clearing the pending journal; deduplicate by stable event/cycle identifiers after crashes. A `restored` phase alone does not prove a completed update: a first save may never have happened.
 
-Use a minimal loopback dashboard in Phase 4 to support the explicit On/Off control. Validate write requests and restrict host/origin; do not expose a public port. Escape rendered content. The runner remains independent of the dashboard process and checks the persisted activation flag before every attempt/retry. Dashboard status must distinguish workflow activation from Windows task installation/enabled state. Phase 2 provides history and status but does not yet provide this UI.
+The loopback dashboard supports the explicit On/Off control. Write requests require exact local Host/Origin, JSON boolean input and a per-process CSRF token. The server binds only to 127.0.0.1; scripts/assets are local and content is rendered as text. The independent runner checks persisted activation and validation before every attempt/retry. Dashboard status distinguishes workflow activation from Windows task installation/enabled state; unavailable Windows access is unknown. `unattendedConfirmed` records the owner's remaining manual Phase 3 checks and does not replace site permission.
 
 ## Acceptance
 

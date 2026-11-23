@@ -2,6 +2,8 @@ const $ = id => document.getElementById(id);
 const time = value => value ? new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Calcutta', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(value)) : 'No record yet';
 const budgetLabels = { ready: 'Ready for an eligible attempt', completed: 'Window completed', 'retry-wait': 'Waiting before the single retry', 'retry-ready': 'Single retry eligible', exhausted: 'Two attempts used · waiting for next window', 'manual-attention': 'Stopped · manual attention required' };
 let state, busy = false, loading = false;
+let activityLoading = false, pageIndex = 0, nextCursor = null;
+let cursors = [null];
 function showError(message) { $('error').textContent = message; $('error').hidden = !message; }
 function render(data) {
   state = data;
@@ -27,8 +29,12 @@ function render(data) {
     data.scheduler.state !== 'enabled' || !data.scheduler.running ? 'Waiting for Windows scheduler' :
     data.nextEligibleAt && Date.parse(data.nextEligibleAt) > Date.now() ? time(data.nextEligibleAt) : 'Eligible now';
   $('last-completed').textContent = time(data.lastCompletedAt);
+  $('last-refreshed').textContent = `Updated ${time(Date.now())}`;
+  if (!data.localStateValid) showError('Local state is unreadable. Counts are unavailable; inspect setup and recovery before continuing.');
+}
+function renderActivity(records) {
   $('activity').replaceChildren();
-  for (const row of data.activity) {
+  for (const row of records) {
     const tr = document.createElement('tr');
     for (const text of [time(row.at), row.action, row.outcome, row.explanation]) {
       const td = document.createElement('td'); td.textContent = text; tr.append(td);
@@ -38,9 +44,34 @@ function render(data) {
     badge.textContent = row.outcome; tr.children[2].replaceChildren(badge);
     $('activity').append(tr);
   }
-  $('empty').hidden = data.activity.length > 0 || !data.localStateValid;
-  $('last-refreshed').textContent = `Updated ${time(Date.now())}`;
-  if (!data.localStateValid) showError('Local state is unreadable. Counts are unavailable; inspect setup and recovery before continuing.');
+  $('empty').hidden = records.length > 0;
+  $('activity-pages').hidden = pageIndex === 0 && nextCursor === null;
+  $('activity-page').textContent = `Page ${pageIndex + 1}`;
+}
+async function loadActivity(cursor, index) {
+  if (activityLoading) return;
+  activityLoading = true;
+  $('activity-error').hidden = true;
+  $('activity-previous').disabled = $('activity-next').disabled = true;
+  try {
+    const query = cursor === null ? '' : `?before=${encodeURIComponent(cursor)}`;
+    const response = await fetch(`/api/activity${query}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error();
+    const { records, next } = await response.json();
+    if (index === 0 && cursor === null) cursors = [null];
+    cursors[index] = cursor;
+    pageIndex = index;
+    nextCursor = next;
+    renderActivity(records);
+  } catch {
+    $('empty').hidden = true;
+    $('activity-error').textContent = 'Activity could not load. Use Refresh to return to the newest page.';
+    $('activity-error').hidden = false;
+  } finally {
+    activityLoading = false;
+    $('activity-previous').disabled = pageIndex === 0;
+    $('activity-next').disabled = nextCursor === null;
+  }
 }
 async function refresh() {
   if (loading) return;
@@ -49,14 +80,22 @@ async function refresh() {
     const response = await fetch('/api/status', { cache: 'no-store' });
     if (!response.ok) throw new Error();
     const data = await response.json();
+    const activityChanged = state?.activityRevision !== data.activityRevision;
     showError(''); render(data);
+    if (pageIndex === 0 && activityChanged && data.localStateValid) void loadActivity(null, 0);
   } catch {
     showError('Cannot reach the local dashboard. Check that npm run dashboard is running, then refresh.');
     $('activation').disabled = true;
     $('last-refreshed').textContent = 'Connection unavailable · displayed values may be stale';
   } finally { loading = false; }
 }
-$('refresh').addEventListener('click', refresh);
+$('refresh').addEventListener('click', () => { void loadActivity(null, 0); void refresh(); });
+$('activity-previous').addEventListener('click', () => {
+  if (pageIndex > 0) void loadActivity(cursors[pageIndex - 1], pageIndex - 1);
+});
+$('activity-next').addEventListener('click', () => {
+  if (nextCursor !== null) void loadActivity(nextCursor, pageIndex + 1);
+});
 $('activation').addEventListener('click', async () => {
   if (busy || !state) return;
   busy = true; $('activation').disabled = true;

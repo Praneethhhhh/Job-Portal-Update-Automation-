@@ -52,7 +52,14 @@ const reasons = {
   'site-unavailable': 'Site temporarily unavailable', 'security-state-unavailable': 'Security state could not be checked'
 };
 
-export async function operationStatus({ root, directory, now = Date.now(), taskStatus = windowsTaskStatus }) {
+export function activityDisplay(row) {
+  return {
+    at: new Date(row.at).toISOString(), action: row.mode === 'minute-test' ? 'Test cycle' : row.action === 'recovery' ? 'Recovery' : 'New cycle',
+    outcome: outcomes[row.outcome], explanation: row.reason ? reasons[row.reason] ?? 'Stopped; inspect local setup and recovery status' : outcomes[row.outcome]
+  };
+}
+
+export async function operationStatus({ root, directory, now = Date.now(), taskStatus = windowsTaskStatus, historySummary }) {
   const config = await readJson(path.join(root, 'config.local.json'), {});
   let readiness;
   try { readiness = await automationReadiness(directory, config); }
@@ -79,18 +86,13 @@ export async function operationStatus({ root, directory, now = Date.now(), taskS
         budget.budgetState = 'completed';
       }
     }
-    const history = await readHistory(directory);
-    const metrics = summarizeHistory(history, now);
-    const activity = [...new Map(history.map(row => [row.eventId, row])).values()].slice(-30).reverse().map(row => ({
-      at: new Date(row.at).toISOString(), action: row.mode === 'minute-test' ? 'Test cycle' : row.action === 'recovery' ? 'Recovery' : 'New cycle',
-      outcome: outcomes[row.outcome], explanation: row.reason ? reasons[row.reason] ?? 'Stopped; inspect local setup and recovery status' : outcomes[row.outcome]
-    }));
+    const metrics = historySummary ? await historySummary(now) : summarizeHistory(await readHistory(directory), now);
     return { enabled: config.enabled === true, readiness, scheduler, account, setup, localStateValid: true,
       lastOutcome: ['running', 'success', 'failed'].includes(state.status) ? state.status : 'never-run',
       pendingCycle: pending.pendingCycle, restorationRequired: pending.restorationRequired,
-      ...budget, ...metrics, activity };
+      ...budget, ...metrics };
   } catch {
     return { enabled: config.enabled === true, readiness: { ready: false, reason: 'Local state is unreadable; inspect recovery and history.' },
-      scheduler, account, setup, localStateValid: false, activity: [] };
+      scheduler, account, setup, localStateValid: false };
   }
 }

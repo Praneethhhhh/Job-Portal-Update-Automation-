@@ -4,13 +4,17 @@
 
 Run `npm run dashboard` and open `http://127.0.0.1:4317`. Keep that terminal running while using the page. The page works offline, uses no external assets and polls local status every 15 seconds. Its counts come from durable history, with daily boundaries in Asia/Calcutta. Completed updates, failed attempts and pending restoration remain separate. Corrupt state shows unavailable counts instead of fabricated zeros. Task status comes from Windows; read/probe failures show unknown.
 
+Recent Activity shows up to 20 records per page. Use **Next** and **Previous** to fetch another page, or **Refresh** to return to the newest records. The newest page refreshes when history changes, while older pages stay in place. The dashboard reads activity in chunks from the end of `.local/history.jsonl`, using a file offset to retrieve older records. Status polling fetches totals separately, streams the journal when totals need refreshing, and caches the counters while the file and local date stay unchanged.
+
+The journal is an append-only local text file with one JSON event per line. It suits a single laptop at this update rate and is excluded from Git. The file grows as events accumulate. If it becomes large enough that scanning it or checking for duplicate events noticeably slows the app, a local SQLite database with indexes and a retention policy would be a better fit.
+
 On requires valid configuration, explicit site permission, a passing read-only check, and a successful supervised cycle in the selected browser mode. The dashboard and scheduler share a lock while saving the switch or reserving a new attempt. After Off is saved, only an attempt already reserved can finish. The toggle preserves the budget and history. Install the Windows tasks separately.
 
 The dashboard displays the saved browser session, read-only check, and supervised result separately. A saved Chrome directory can outlast the Naukri login. If the session expires, sign in again through the dedicated browser.
 
 `postSaveDelayMs` enforces a minimum five-second pause after each submission before reopening. In `persisted-editor` mode, a fresh read must match the requested Name. The coordinator can reuse that verified value once to avoid a duplicate navigation. The app stops on authentication challenges and access denials.
 
-The local HTTP server binds only to 127.0.0.1 and validates Host, Origin, request size, JSON shape and a random CSRF token. It rejects cross-site browser requests and serves only three fixed assets plus two API routes. Status maps known fields/outcomes instead of exposing journal values, config, raw errors or arbitrary history fields. This protects the local web interface; it does not protect against malware already running under your Windows account.
+The local HTTP server binds only to 127.0.0.1 and validates Host, Origin, request size, JSON shape and a random CSRF token for writes. It rejects cross-site browser requests. The status and activity endpoints return selected fields and redacted outcomes.
 
 ## Independent runner and Windows task
 

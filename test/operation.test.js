@@ -238,8 +238,47 @@ test('On is gated, persists without resetting budget, and corrupt history shows 
   } finally { await dashboard.close(); }
 }));
 
+function activityFixture(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    version: 1, eventId: `event-${index}`, cycleId: `cycle-${index}`,
+    at: new Date(start + index * 60000).toISOString(), outcome: 'cycle-completed',
+    privateField: 'Private Name ✓'.repeat(28)
+  })).map(row => JSON.stringify(row)).join('\n') + '\n';
+}
+
+test('activity returns bounded pages and keeps the next cursor stable across appends', async () => fixture(async ({ root, directory }) => {
+  const journal = path.join(directory, 'history.jsonl');
+  await fs.writeFile(journal, activityFixture(45));
+  const dashboard = await startDashboard({ root, directory, port: 0, taskStatus });
+  try {
+    const status = await request(`${dashboard.url}/api/status`);
+    assert.equal(status.data.completedTotal, 45);
+    assert.equal(status.data.activity, undefined);
+    const activity = async cursor => {
+      const query = cursor === undefined ? '' : `?before=${cursor}`;
+      const result = await request(`${dashboard.url}/api/activity${query}`);
+      assert.equal(result.status, 200);
+      assert.ok(!JSON.stringify(result.data).includes('Private Name'));
+      return result.data;
+    };
+    const first = await activity();
+    assert.equal(first.records.length, 20);
+    assert.equal(first.records[0].at, new Date(start + 44 * 60000).toISOString());
+    await fs.appendFile(journal, activityFixture(46).trimEnd().split('\n').at(-1) + '\n');
+    const second = await activity(first.next);
+    assert.equal(second.records.length, 20);
+    assert.equal(second.records[0].at, new Date(start + 24 * 60000).toISOString());
+    const last = await activity(second.next);
+    assert.equal(last.records.length, 5);
+    assert.equal(last.next, null);
+    assert.equal((await request(`${dashboard.url}/api/status`)).data.completedTotal, 46);
+    assert.equal((await request(`${dashboard.url}/api/activity?before=1`)).status, 400);
+  } finally { await dashboard.close(); }
+}));
+
 test('dashboard browser renders offline, persists On/Off, and fits desktop and mobile', async () => fixture(async ({ root, directory, configFile, saveConfig }) => {
   await saveConfig({ unattendedConfirmed: false });
+  await fs.writeFile(path.join(directory, 'history.jsonl'), activityFixture(21));
   const dashboard = await startDashboard({ root, directory, port: 0, taskStatus });
   let browser;
   try {
@@ -247,8 +286,23 @@ test('dashboard browser renders offline, persists On/Off, and fits desktop and m
     const page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    const activityRequests = [];
+    page.on('request', request => {
+      if (new URL(request.url()).pathname === '/api/activity') activityRequests.push(request.url());
+    });
     assert.equal((await page.goto(dashboard.url)).status(), 200);
     await page.getByRole('heading', { name: 'Your workflow is Off' }).waitFor();
+    await page.getByRole('navigation', { name: 'Activity pages' }).waitFor();
+    assert.equal(await page.locator('#activity tr').count(), 20);
+    assert.deepEqual(activityRequests, [`${dashboard.url}/api/activity`]);
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.getByText('Page 2', { exact: true }).waitFor();
+    assert.equal(await page.locator('#activity tr').count(), 1);
+    assert.equal(await page.getByRole('button', { name: 'Next', exact: true }).isDisabled(), true);
+    assert.match(activityRequests[1], /\?before=\d+$/);
+    await page.getByRole('button', { name: 'Previous', exact: true }).click();
+    await page.getByText('Page 1', { exact: true }).waitFor();
+    assert.equal(await page.locator('#activity tr').count(), 20);
     const toggle = page.getByRole('switch', { name: 'Enable profile workflow' });
     assert.equal(await toggle.isDisabled(), false);
     assert.equal(await page.locator('#last-outcome').innerText(), 'No runs yet');

@@ -42,6 +42,12 @@
         <div class="section-heading"><h2 id="activity-title">Recent activity</h2><button class="refresh" id="refresh">Refresh</button></div>
         <div class="table-wrap"><table><thead><tr><th scope="col">Time · IST</th><th scope="col">Action</th><th scope="col">Result</th><th scope="col">Details</th></tr></thead><tbody id="activity"></tbody></table></div>
         <div id="empty" class="empty"><span class="empty-icon">✓</span><h3>No activity yet</h3><p>Verified updates and recovery attempts will appear here.</p></div>
+        <nav id="activity-pages" class="section-heading" aria-label="Activity pages" hidden>
+          <button id="activity-previous" class="refresh" type="button">Previous</button>
+          <span id="activity-page" aria-live="polite">Page 1</span>
+          <button id="activity-next" class="refresh" type="button">Next</button>
+        </nav>
+        <p id="activity-error" class="section-heading" role="alert" hidden></p>
       </section>
       <footer><span>Profile Scheduler · On this computer</span><span id="last-refreshed" aria-live="polite">Connecting…</span></footer>
     </main>

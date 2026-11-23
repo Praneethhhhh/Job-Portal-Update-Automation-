@@ -3,11 +3,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { acquireLock, readJson, writeJson } from './core.js';
-import { automationReadiness, operationStatus } from './operation.js';
+import { activityDisplay, automationReadiness, operationStatus } from './operation.js';
+import { cachedHistorySummary, readHistoryPage } from './history.js';
 
 export async function startDashboard({ root, directory = path.join(root, '.local'), port = 4317, taskStatus }) {
   await fs.mkdir(directory, { recursive: true });
   const token = randomBytes(32).toString('hex');
+  const historySummary = cachedHistorySummary(directory);
   const assets = new Map(await Promise.all([
     ['/', 'dashboard.html', 'text/html'], ['/dashboard.css', 'dashboard.css', 'text/css'], ['/dashboard.js', 'dashboard.js', 'text/javascript']
   ].map(async ([url, file, type]) => [url, { body: await fs.readFile(path.join(root, 'web', file)), type }])));
@@ -29,7 +31,19 @@ export async function startDashboard({ root, directory = path.join(root, '.local
         res.writeHead(200, { 'Content-Type': `${asset.type}; charset=utf-8` }); return res.end(asset.body);
       }
       if (req.method === 'GET' && req.url === '/api/status') {
-        return json(200, { ...await operationStatus({ root, directory, taskStatus }), token });
+        return json(200, { ...await operationStatus({ root, directory, taskStatus, historySummary }), token });
+      }
+      if (req.method === 'GET' && /^\/api\/activity(?:\?|$)/.test(req.url)) {
+        const params = new URL(req.url, origin).searchParams;
+        const cursor = params.get('before');
+        if (cursor !== null && !/^\d+$/.test(cursor)) return json(400, { error: 'Invalid activity cursor.' });
+        try {
+          const page = await readHistoryPage(directory, cursor === null ? undefined : Number(cursor));
+          return json(200, { records: page.rows.map(activityDisplay), next: page.next });
+        } catch (error) {
+          if (error instanceof RangeError) return json(400, { error: 'Activity changed. Refresh to return to the newest page.' });
+          throw error;
+        }
       }
       if (req.method !== 'POST' || req.url !== '/api/activation') return json(404, { error: 'Not found.' });
       const received = Buffer.from(typeof req.headers['x-csrf-token'] === 'string' ? req.headers['x-csrf-token'] : '');
@@ -57,7 +71,7 @@ export async function startDashboard({ root, directory = path.join(root, '.local
           const readiness = await automationReadiness(directory, { ...config, ...(change.unattendedConfirmed === true ? { unattendedConfirmed: true } : {}) });
           if (!readiness.ready) return json(409, { error: readiness.reason });
           // Corrupt state must not be reactivated by a healthy config alone.
-          if (!(await operationStatus({ root, directory, taskStatus })).localStateValid) return json(409, { error: 'Inspect local state before enabling.' });
+          if (!(await operationStatus({ root, directory, taskStatus, historySummary })).localStateValid) return json(409, { error: 'Inspect local state before enabling.' });
         }
         await writeJson(configFile, { ...config, enabled: change.enabled, ...(change.unattendedConfirmed === true ? { unattendedConfirmed: true } : {}) });
         return json(200, { enabled: change.enabled });

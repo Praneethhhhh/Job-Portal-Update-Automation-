@@ -122,7 +122,7 @@ test('sign-in and wake each start a fresh cycle and the next interval is persist
     await writeJson(marker, { at: new Date(now).toISOString() });
     assert.equal((await runScheduledTick({ ...options, now })).outcome, 'restored');
     const budget = await readJson(path.join(directory, 'budget.json'));
-    assert.ok(budget.intervalMs >= 2100000 && budget.intervalMs <= 2700000);
+    assert.ok(budget.intervalMs >= 1500000 && budget.intervalMs <= 2100000);
     assert.equal(budget.intervalMs % 1000, 0);
     const early = await runScheduledTick({ ...options, now: now + budget.intervalMs - 1000 });
     assert.equal(early.outcome, 'skipped');

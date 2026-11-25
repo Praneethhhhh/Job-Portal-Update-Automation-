@@ -11,7 +11,7 @@
 | Node.js and npm | Node runs the worker, dashboard, and CLI. npm installs Playwright and provides the project commands. |
 | Installed Chrome or Edge | Playwright uses a dedicated browser profile under `.local/browser/`. Your normal browser profile is separate. |
 
-The tasks leave the laptop asleep. After Windows sign-in or wake, the worker checks the saved signal and can start a fresh cycle when On. After a scheduled cycle starts, the app saves a randomly selected delay from 35 to 45 minutes at whole-second precision. The five-minute Windows timer only helps restart the worker. It does not set the profile-update interval.
+The tasks leave the laptop asleep. After Windows sign-in or wake, the worker checks the saved signal and can start a fresh cycle when On. After a scheduled cycle starts, the app saves a randomly selected delay from 25 to 35 minutes at whole-second precision. Previously saved 35–45 minute intervals remain valid until the next cycle. The five-minute Windows timer only helps restart the worker. It does not set the profile-update interval.
 
 ```mermaid
 flowchart LR

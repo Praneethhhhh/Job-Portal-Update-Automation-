@@ -18,7 +18,7 @@ export function validateBudget(budget) {
 function validInterval(mode, ms) {
   if (!Number.isFinite(ms)) return false;
   if (mode === 'minute-test') return ms === 60000;
-  if (mode === 'scheduled') return ms >= 2100000 && ms <= 2700000 && ms % 1000 === 0;
+  if (mode === 'scheduled') return ms >= 1500000 && ms <= 2700000 && ms % 1000 === 0;
   return ms >= 3600000;
 }
 
@@ -55,7 +55,7 @@ export function reserveAttempt(previous, { now, minimumIntervalMinutes, cycleId,
   };
   if (minuteTest) budget.mode = 'minute-test';
   if (!active && scheduledIntervalMs !== undefined) {
-    if (minuteTest || !validInterval('scheduled', scheduledIntervalMs)) throw new Error('Invalid scheduled interval');
+    if (minuteTest || !validInterval('scheduled', scheduledIntervalMs) || scheduledIntervalMs > 2100000) throw new Error('Invalid scheduled interval');
     budget.mode = 'scheduled';
   }
   const attempt = { id: randomUUID(), startedAt: new Date(now).toISOString(), action, outcome: 'running' };

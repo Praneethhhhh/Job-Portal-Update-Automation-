@@ -83,7 +83,7 @@ npm run dashboard
 
 Expect two Windows tasks, **NaukriProfileScheduler** and **NaukriProfileScheduler-Session**. Open the dashboard at [http://127.0.0.1:4317](http://127.0.0.1:4317), check that the worker is active, and turn the workflow **On**. Use the next eligible time and recent activity to check the first scheduled result. The worker runs in your signed-in Windows session while the computer is awake.
 
-The five-minute backup trigger checks whether the worker needs to start. It is separate from the profile update schedule. During normal scheduled operation, the worker selects the next 35–45 minute interval and stores it locally. Sign-in or wake can signal a fresh cycle when the saved state allows it. The worker checks pending restoration and retry limits first.
+The five-minute backup trigger checks whether the worker needs to start. It is separate from the profile update schedule. During normal scheduled operation, the worker selects the next 25–35 minute interval and stores it locally. An already saved interval remains in effect until that cycle finishes. Sign-in or wake can signal a fresh cycle when the saved state allows it. The worker checks pending restoration and retry limits first.
 
 ## Daily use and troubleshooting
 

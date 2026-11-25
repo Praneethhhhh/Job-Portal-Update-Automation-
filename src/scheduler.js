@@ -22,7 +22,7 @@ export async function runScheduledTick({ root, directory, createAdapter, now = D
     const control = path.join(directory, 'control');
     await fs.mkdir(control, { recursive: true });
     return await runCycle({ directory, adapter, now, sessionStartedAt: sessionStartedAt <= now ? sessionStartedAt : undefined, minimumIntervalMinutes: config.minimumIntervalMinutes, closeAdapter: true,
-      scheduledIntervalMs: randomInt(35 * 60, 45 * 60 + 1) * 1000,
+      scheduledIntervalMs: randomInt(25 * 60, 35 * 60 + 1) * 1000,
       lockReservation: () => acquireLock(control),
       authorize: async ({ reservation } = {}) => {
         if (reservation && !(await canRun())) return false;

@@ -91,6 +91,8 @@ export async function runCycle({ directory, adapter, minimumIntervalMinutes = 60
     const decision = recoveryDecision(cycle, observed);
     if (decision === 'conflict') throw new WorkflowError('name-conflict');
     if (decision === 'complete') return finish();
+    // Recovery has just read the temporary name from the saved profile.
+    cycle.temporaryVerified = true;
     await persist('restore-submit-intent');
     await adapter.saveName(cycle.temporaryName, cycle.originalName);
     if (await adapter.readName() !== cycle.originalName) throw new WorkflowError('restoration-unverified', true);

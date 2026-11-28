@@ -93,7 +93,7 @@ test('scheduled recovery restores only, and turning Off cancels a waiting retry'
   model.name = 'Private Name.';
   assert.equal((await runScheduledTick(options)).outcome, 'restored');
   assert.deepEqual(model.saves, ['Private Name']);
-  assert.equal((await operationStatus({ ...options, taskStatus, now: start })).completedTotal, 0);
+  assert.equal((await operationStatus({ ...options, taskStatus, now: start })).completedTotal, 1);
   const failOptions = { ...options, now: start + 3600000, createAdapter: () => ({ readName: async () => { model.reads++; throw new WorkflowError('offline', true); }, close: async () => {} }) };
   assert.equal((await runScheduledTick(failOptions)).outcome, 'failed');
   await saveConfig({ enabled: false });

@@ -139,8 +139,10 @@ test('lost save confirmation reconciles temporary Name on single retry and resto
   assert.equal(second.outcome, 'restored');
   assert.equal(model.name, 'Original Name');
   assert.equal(model.saves.length, 2);
-  // No verified first confirmation: do not fabricate a completed update.
-  assert.equal(summarizeHistory(await readHistory(directory)).completedTotal, 0);
+  // Recovery verified the temporary value persisted before restoring it.
+  const summary = summarizeHistory(await readHistory(directory));
+  assert.equal(summary.completedTotal, 1);
+  assert.equal(summary.failedTotal, 1);
 }));
 
 test('validation error stops rather than repeatedly changing the name', async () => fixture({ reject: true }, async ({ directory, adapter, model }) => {
